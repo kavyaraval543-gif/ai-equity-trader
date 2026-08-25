@@ -29,8 +29,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 # Arbitrary fixed keys, one per cycle type, for the Postgres advisory lock.
+# The intraday keys are distinct from the daily ones so the two traders never
+# block each other — they are independent systems on separate portfolios.
 ENTRY_CYCLE_LOCK_KEY = 918_273_001
 POSITION_MONITOR_LOCK_KEY = 918_273_002
+INTRADAY_ENTRY_CYCLE_LOCK_KEY = 918_273_003
+INTRADAY_POSITION_MONITOR_LOCK_KEY = 918_273_004
 
 
 class CycleGuard:
@@ -47,6 +51,8 @@ class CycleGuard:
 
 entry_cycle_guard = CycleGuard("entry_cycle")
 position_monitor_guard = CycleGuard("position_monitor")
+intraday_entry_cycle_guard = CycleGuard("intraday_entry_cycle")
+intraday_position_monitor_guard = CycleGuard("intraday_position_monitor")
 
 
 def _try_pg_advisory_lock(db: Session, key: int) -> bool:

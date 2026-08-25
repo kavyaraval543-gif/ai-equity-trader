@@ -2,29 +2,40 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.models.enums import PositionStatus
+from app.models.enums import PortfolioKind, PositionStatus
 from app.models.portfolio import Portfolio
 from app.models.position import Position
 
 
-def get_or_create_portfolio(db: Session, settings: Settings | None = None) -> Portfolio:
-    """Phase 2 runs a single paper portfolio; this returns it, creating it
-    with the configured starting capital on first use."""
+def get_or_create_portfolio(
+    db: Session, settings: Settings | None = None, kind: PortfolioKind = PortfolioKind.DAILY
+) -> Portfolio:
+    """Returns the portfolio for the given kind, creating it with the
+    configured starting capital on first use. DAILY and INTRADAY portfolios
+    are always separate rows — cash and positions never mix between them."""
     settings = settings or get_settings()
-    portfolio = db.execute(select(Portfolio).order_by(Portfolio.id.asc())).scalars().first()
+    portfolio = db.execute(
+        select(Portfolio).where(Portfolio.kind == kind).order_by(Portfolio.id.asc())
+    ).scalars().first()
     if portfolio is not None:
         return portfolio
 
+    starting_capital = settings.intraday_starting_capital if kind == PortfolioKind.INTRADAY else settings.starting_capital
     portfolio = Portfolio(
-        starting_capital=settings.starting_capital,
-        available_cash=settings.starting_capital,
-        current_equity=settings.starting_capital,
+        kind=kind,
+        starting_capital=starting_capital,
+        available_cash=starting_capital,
+        current_equity=starting_capital,
         realized_pnl=0.0,
         unrealized_pnl=0.0,
     )
     db.add(portfolio)
     db.flush()
     return portfolio
+
+
+def get_or_create_intraday_portfolio(db: Session, settings: Settings | None = None) -> Portfolio:
+    return get_or_create_portfolio(db, settings, kind=PortfolioKind.INTRADAY)
 
 
 def recalculate_portfolio(db: Session, portfolio: Portfolio) -> None:

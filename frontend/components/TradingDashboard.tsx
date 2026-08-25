@@ -41,8 +41,8 @@ async function fetchAll(): Promise<DashboardData> {
     await Promise.all([
       apiGet<TradingStatus>("/api/v1/trading/status"),
       apiGet<Position[]>("/api/v1/portfolio/positions"),
-      apiGet<Signal[]>("/api/v1/signals?limit=50"),
-      apiGet<RiskDecision[]>("/api/v1/risk/decisions?limit=50"),
+      apiGet<Signal[]>("/api/v1/signals?limit=50&strategy_name=SMA_CROSSOVER"),
+      apiGet<RiskDecision[]>("/api/v1/risk/decisions?limit=50&strategy_name=SMA_CROSSOVER"),
       apiGet<Trade[]>("/api/v1/trades?limit=50"),
       apiGet<MarketDataStatus>("/api/v1/market-data/status"),
       apiGet<SystemEvent[]>("/api/v1/system/events?limit=30"),

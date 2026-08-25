@@ -8,7 +8,7 @@ from sqlalchemy import JSON, Date, DateTime, Enum, Float, ForeignKey, Integer, S
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
-from app.models.enums import TradeSide
+from app.models.enums import ExitReason, TradeSide
 
 
 class BacktestRun(Base):
@@ -16,6 +16,8 @@ class BacktestRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    # "1d" for the Phase 4 daily backtester, "5m"/"15m" for Phase 5 intraday.
+    interval: Mapped[str] = mapped_column(String(10), nullable=False, default="1d")
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     starting_capital: Mapped[float] = mapped_column(Float, nullable=False)
@@ -28,6 +30,7 @@ class BacktestRun(Base):
     max_drawdown_pct: Mapped[float] = mapped_column(Float, nullable=False)
     buy_hold_return_pct: Mapped[float] = mapped_column(Float, nullable=False)
     transaction_cost_percent: Mapped[float] = mapped_column(Float, nullable=False)
+    slippage_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     strategy_name: Mapped[str] = mapped_column(String(100), nullable=False)
     strategy_params: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -47,4 +50,9 @@ class BacktestTrade(Base):
     price: Mapped[float] = mapped_column(Float, nullable=False)
     transaction_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Only set on the SELL/exit row of a round trip; null for the BUY/entry row.
+    exit_reason: Mapped[ExitReason | None] = mapped_column(
+        Enum(ExitReason, native_enum=False, values_callable=lambda e: [m.value for m in e]),
+        nullable=True,
+    )
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

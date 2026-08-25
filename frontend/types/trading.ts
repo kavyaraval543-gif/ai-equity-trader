@@ -35,6 +35,7 @@ export type ExitReason =
   | "TRAILING_STOP"
   | "STRATEGY_EXIT"
   | "SESSION_END"
+  | "MAX_HOLDING_TIME"
   | "MANUAL";
 
 export interface Trade {

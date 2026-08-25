@@ -42,7 +42,17 @@ class ExitReason(str, enum.Enum):
     TRAILING_STOP = "TRAILING_STOP"
     STRATEGY_EXIT = "STRATEGY_EXIT"
     SESSION_END = "SESSION_END"
+    MAX_HOLDING_TIME = "MAX_HOLDING_TIME"
     MANUAL = "MANUAL"
+
+
+class PortfolioKind(str, enum.Enum):
+    """Distinguishes the daily SMA(10/30) autonomous trader's portfolio from
+    the (separate, isolated) intraday portfolio — they never share cash or
+    positions unless explicitly configured to."""
+
+    DAILY = "DAILY"
+    INTRADAY = "INTRADAY"
 
 
 class MarketSessionStatus(str, enum.Enum):

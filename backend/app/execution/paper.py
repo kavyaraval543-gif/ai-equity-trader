@@ -1,6 +1,13 @@
 """Simulated (paper) order execution. No broker credentials, no real orders,
 no live execution — every trade here is a bookkeeping entry against a
 virtual cash balance, priced using real fetched market prices.
+
+Transaction cost / stop-loss / target / slippage assumptions are
+constructor parameters (not hardcoded to the daily settings) so the exact
+same execution logic serves both the daily SMA(10/30) trader and the
+intraday trader without duplicating any of it — only the numbers passed in
+differ. Slippage always works against the trader (worse fill than the raw
+open price), applied on top of the transaction cost.
 """
 from datetime import datetime, timezone
 
@@ -19,8 +26,26 @@ from app.risk.schemas import RiskDecisionResult
 class PaperExecutionProvider(ExecutionProvider):
     name = "paper"
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        transaction_cost_percent: float | None = None,
+        stop_loss_percent: float | None = None,
+        target_percent: float | None = None,
+        slippage_percent: float = 0.0,
+    ) -> None:
         self.settings = settings or get_settings()
+        # bps -> percent, to keep one unit convention across both callers.
+        self.transaction_cost_percent = (
+            transaction_cost_percent
+            if transaction_cost_percent is not None
+            else self.settings.risk_transaction_cost_bps / 100
+        )
+        self.stop_loss_percent = (
+            stop_loss_percent if stop_loss_percent is not None else self.settings.stop_loss_percent
+        )
+        self.target_percent = target_percent if target_percent is not None else self.settings.target_percent
+        self.slippage_percent = slippage_percent
 
     def execute_approved_signal(
         self,
@@ -45,8 +70,9 @@ class PaperExecutionProvider(ExecutionProvider):
     def _execute_buy(self, db: Session, risk_decision: RiskDecisionResult, portfolio: Portfolio) -> Trade:
         signal = risk_decision.signal
         quantity = risk_decision.approved_quantity
-        price = signal.market_price
-        transaction_cost = quantity * price * (self.settings.risk_transaction_cost_bps / 10_000)
+        # Slippage on a BUY makes the fill worse (higher) than the quoted price.
+        price = signal.market_price * (1 + self.slippage_percent / 100)
+        transaction_cost = quantity * price * (self.transaction_cost_percent / 100)
         total_cost = quantity * price + transaction_cost
 
         if total_cost > portfolio.available_cash:
@@ -57,14 +83,13 @@ class PaperExecutionProvider(ExecutionProvider):
                 f"{portfolio.available_cash:.2f}."
             )
 
-        stop_loss = (
-            price * (1 - self.settings.stop_loss_percent / 100) if self.settings.stop_loss_percent else None
-        )
-        target = price * (1 + self.settings.target_percent / 100) if self.settings.target_percent else None
+        stop_loss = price * (1 - self.stop_loss_percent / 100) if self.stop_loss_percent else None
+        target = price * (1 + self.target_percent / 100) if self.target_percent else None
 
         position = Position(
             portfolio_id=portfolio.id,
             symbol=signal.symbol,
+            strategy_name=signal.strategy_name,
             quantity=quantity,
             entry_price=price,
             current_price=price,
@@ -98,14 +123,19 @@ class PaperExecutionProvider(ExecutionProvider):
     def _execute_sell(self, db: Session, risk_decision: RiskDecisionResult, portfolio: Portfolio) -> Trade:
         signal = risk_decision.signal
         position = db.execute(
-            select(Position).where(Position.symbol == signal.symbol, Position.status == PositionStatus.OPEN)
+            select(Position).where(
+                Position.symbol == signal.symbol,
+                Position.status == PositionStatus.OPEN,
+                Position.portfolio_id == portfolio.id,
+            )
         ).scalar_one_or_none()
         if position is None:
             raise PermissionError(f"Refusing to execute SELL: no open position for {signal.symbol}.")
 
         quantity = position.quantity
-        price = signal.market_price
-        transaction_cost = quantity * price * (self.settings.risk_transaction_cost_bps / 10_000)
+        # Slippage on a SELL makes the fill worse (lower) than the quoted price.
+        price = signal.market_price * (1 - self.slippage_percent / 100)
+        transaction_cost = quantity * price * (self.transaction_cost_percent / 100)
         proceeds = quantity * price - transaction_cost
         # Net of the exit-side transaction cost against price movement since entry.
         # The entry-side cost was already realized as a cash outflow at BUY time.
@@ -137,8 +167,11 @@ class PaperExecutionProvider(ExecutionProvider):
         db.flush()
         return trade
 
-    def update_position_prices(self, db: Session, price_lookup: dict[str, float]) -> None:
-        open_positions = db.execute(select(Position).where(Position.status == PositionStatus.OPEN)).scalars().all()
+    def update_position_prices(self, db: Session, price_lookup: dict[str, float], portfolio_id: int | None = None) -> None:
+        conditions = [Position.status == PositionStatus.OPEN]
+        if portfolio_id is not None:
+            conditions.append(Position.portfolio_id == portfolio_id)
+        open_positions = db.execute(select(Position).where(*conditions)).scalars().all()
         for position in open_positions:
             price = price_lookup.get(position.symbol)
             if price is None:

@@ -5,9 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import backtests, health, market_data, portfolio, risk, signals, trades, trading
+from app.api.v1 import backtests, health, intraday, market_data, portfolio, risk, signals, trades, trading
 from app.core.config import get_settings
 from app.database.session import SessionLocal
+from app.scheduler.intraday_scheduler import intraday_scheduler
 from app.scheduler.trading_scheduler import scheduler
 from app.services.startup_recovery import run_startup_recovery
 
@@ -22,10 +23,16 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     finally:
         db.close()
 
+    # Both schedulers are started unconditionally — that only means their
+    # threads begin ticking. Whether either one actually places a trade is
+    # gated separately by its own AutonomousTradingState (daily) /
+    # IntradayAutonomousState (intraday), both of which default to STOPPED.
     scheduler.start()
+    intraday_scheduler.start()
     try:
         yield
     finally:
+        intraday_scheduler.shutdown()
         scheduler.shutdown()
 
 
@@ -55,6 +62,7 @@ app.include_router(risk.router, prefix=settings.api_v1_prefix)
 app.include_router(market_data.router, prefix=settings.api_v1_prefix)
 app.include_router(trading.router, prefix=settings.api_v1_prefix)
 app.include_router(backtests.router, prefix=settings.api_v1_prefix)
+app.include_router(intraday.router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/")

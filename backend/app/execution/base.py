@@ -30,5 +30,12 @@ class ExecutionProvider(ABC):
         """
 
     @abstractmethod
-    def update_position_prices(self, db: Session, price_lookup: dict[str, float]) -> None:
-        """Mark open positions to the latest real market prices."""
+    def update_position_prices(self, db: Session, price_lookup: dict[str, float], portfolio_id: int | None = None) -> None:
+        """Mark open positions to the latest real market prices.
+
+        `portfolio_id=None` marks to market across every portfolio holding
+        that symbol (used only where no single portfolio is in scope);
+        callers that already have a specific portfolio in hand should pass
+        its id so a price fetched for one portfolio's cycle never touches
+        another portfolio's position in the same symbol.
+        """

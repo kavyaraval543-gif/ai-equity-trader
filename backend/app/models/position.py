@@ -13,6 +13,10 @@ class Position(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Which strategy opened this position — lets the position monitor apply
+    # strategy-specific rules (e.g. intraday's max-holding-time exit) without
+    # guessing from the portfolio alone.
+    strategy_name: Mapped[str] = mapped_column(String(100), nullable=False, default="SMA_CROSSOVER")
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_price: Mapped[float] = mapped_column(Float, nullable=False)
     current_price: Mapped[float] = mapped_column(Float, nullable=False)

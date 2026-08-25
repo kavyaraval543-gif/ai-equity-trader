@@ -80,7 +80,7 @@ class TradingOrchestrator:
                 symbol_results.append(SymbolCycleResult(symbol=symbol, status="unexpected_error", error=str(exc)))
                 error_count += 1
 
-        self.execution.update_position_prices(self.db, price_lookup)
+        self.execution.update_position_prices(self.db, price_lookup, portfolio_id=portfolio.id)
         recalculate_portfolio(self.db, portfolio)
         self.db.commit()
         self.db.refresh(portfolio)

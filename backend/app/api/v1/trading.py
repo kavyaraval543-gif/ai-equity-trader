@@ -19,11 +19,15 @@ from app.services.portfolio_service import get_or_create_portfolio
 router = APIRouter(tags=["trading"])
 
 
-def _open_position_count(db: Session) -> int:
-    return db.execute(select(func.count(Position.id)).where(Position.status == PositionStatus.OPEN)).scalar_one()
+def _open_position_count(db: Session, portfolio_id: int) -> int:
+    return db.execute(
+        select(func.count(Position.id)).where(
+            Position.portfolio_id == portfolio_id, Position.status == PositionStatus.OPEN
+        )
+    ).scalar_one()
 
 
-def _autonomous_status(db: Session, settings: Settings) -> AutonomousStatusOut:
+def _autonomous_status(db: Session, settings: Settings, portfolio_id: int) -> AutonomousStatusOut:
     state = autonomous_control_service.get_or_create_state(db, settings)
     db.commit()
     return AutonomousStatusOut(
@@ -40,7 +44,7 @@ def _autonomous_status(db: Session, settings: Settings) -> AutonomousStatusOut:
         last_skip_reason=scheduler.last_skip_reason,
         last_monitor_run_at=scheduler.last_monitor_run_at,
         last_monitor_error=scheduler.last_monitor_error,
-        open_position_count=_open_position_count(db),
+        open_position_count=_open_position_count(db, portfolio_id),
     )
 
 
@@ -58,8 +62,8 @@ def get_trading_status(db: Session = Depends(get_db), settings: Settings = Depen
         market_data_provider=settings.market_data_provider,
         symbols=settings.market_data_symbols,
         portfolio=PortfolioOut.model_validate(portfolio),
-        open_position_count=_open_position_count(db),
-        autonomous=_autonomous_status(db, settings),
+        open_position_count=_open_position_count(db, portfolio.id),
+        autonomous=_autonomous_status(db, settings, portfolio.id),
         market_session=MarketSessionOut(**market_session),
         exit_config=ExitConfigOut(
             stop_loss_percent=settings.stop_loss_percent,
@@ -83,7 +87,9 @@ def run_trading_cycle(db: Session = Depends(get_db)) -> RunCycleResult:
 def get_autonomous_status(
     db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> AutonomousStatusOut:
-    return _autonomous_status(db, settings)
+    portfolio = get_or_create_portfolio(db, settings)
+    db.commit()
+    return _autonomous_status(db, settings, portfolio.id)
 
 
 @router.post("/trading/autonomous/start", response_model=AutonomousStatusOut)
@@ -91,7 +97,9 @@ def start_autonomous_trading(
     db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> AutonomousStatusOut:
     autonomous_control_service.start(db, settings)
-    return _autonomous_status(db, settings)
+    portfolio = get_or_create_portfolio(db, settings)
+    db.commit()
+    return _autonomous_status(db, settings, portfolio.id)
 
 
 @router.post("/trading/autonomous/pause", response_model=AutonomousStatusOut)
@@ -99,7 +107,9 @@ def pause_autonomous_trading(
     db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> AutonomousStatusOut:
     autonomous_control_service.pause(db)
-    return _autonomous_status(db, settings)
+    portfolio = get_or_create_portfolio(db, settings)
+    db.commit()
+    return _autonomous_status(db, settings, portfolio.id)
 
 
 @router.post("/trading/autonomous/stop", response_model=AutonomousStatusOut)
@@ -107,4 +117,6 @@ def stop_autonomous_trading(
     db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> AutonomousStatusOut:
     autonomous_control_service.stop(db)
-    return _autonomous_status(db, settings)
+    portfolio = get_or_create_portfolio(db, settings)
+    db.commit()
+    return _autonomous_status(db, settings, portfolio.id)

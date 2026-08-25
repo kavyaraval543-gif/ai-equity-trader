@@ -88,6 +88,58 @@ class Settings(BaseSettings):
     # (stop-loss/target/trailing-stop) still fire — see app/risk/engine.py.
     emergency_stop: bool = False
 
+    # --- Phase 5: intraday (separate from the daily SMA autonomous trader) ---
+
+    # Intraday universe — independently configurable from the daily one,
+    # defaults to the same 5 liquid stocks.
+    intraday_symbols: list[str] = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
+    intraday_timeframe: str = "5m"  # "5m" or "15m"
+    # Yahoo Finance hard limit for sub-daily intervals (empirically confirmed:
+    # "The requested range must be within the last 60 days"). Requests beyond
+    # this are rejected with a clear error, never silently truncated.
+    intraday_max_lookback_days: int = 60
+    intraday_max_staleness_minutes: float = 30.0
+
+    # Strategy — Intraday VWAP + momentum (backtesting/autonomous intraday only;
+    # never used by the daily SMA(10/30) autonomous trader).
+    intraday_trend_fast_ema: int = 9
+    intraday_trend_slow_ema: int = 21
+    intraday_rsi_period: int = 14
+    intraday_rsi_min: float = 50.0
+    intraday_rsi_max: float = 75.0
+    intraday_volume_avg_window: int = 20
+    intraday_volume_multiplier: float = 1.2
+
+    # Intraday risk engine — layered on top of (never bypassing) the shared
+    # RiskEngine checks. See app/risk/intraday_engine.py.
+    intraday_starting_capital: float = 100_000.0
+    intraday_risk_max_trades_per_day: int = 5
+    intraday_risk_max_simultaneous_positions: int = 1
+    intraday_risk_max_capital_per_trade_pct: float = 0.50
+    intraday_risk_max_daily_loss_pct: float = 0.02
+    intraday_risk_max_consecutive_losses: int = 3
+    intraday_risk_cooldown_minutes: int = 15
+    # No new entries within this many minutes of session close.
+    intraday_no_entry_minutes_before_close: int = 15
+
+    # Intraday exit management
+    intraday_stop_loss_percent: float = 1.0
+    intraday_target_percent: float = 1.5
+    intraday_trailing_stop_enabled: bool = False
+    intraday_trailing_stop_percent: float = 0.5
+    intraday_max_holding_minutes: int = 120
+    intraday_force_close_at_session_end: bool = True
+
+    # Intraday transaction costs + slippage (backtesting and live paper fills)
+    intraday_transaction_cost_percent: float = 0.05
+    intraday_slippage_percent: float = 0.05
+
+    # Intraday autonomous scheduler — separate from the daily scheduler/state,
+    # defaults OFF, and is never auto-enabled by anything in this system.
+    intraday_cycle_interval_seconds: int = 60
+    intraday_position_monitor_interval_seconds: int = 30
+    intraday_autonomous_trading_enabled: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

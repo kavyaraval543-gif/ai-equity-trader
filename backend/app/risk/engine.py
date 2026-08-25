@@ -92,7 +92,11 @@ class RiskEngine:
             return rejected(f"Invalid market price for {signal.symbol}: {signal.market_price}.")
 
         open_position = db.execute(
-            select(Position).where(Position.symbol == signal.symbol, Position.status == PositionStatus.OPEN)
+            select(Position).where(
+                Position.symbol == signal.symbol,
+                Position.status == PositionStatus.OPEN,
+                Position.portfolio_id == portfolio.id,
+            )
         ).scalar_one_or_none()
 
         if signal.signal_type == SignalType.SELL:
@@ -133,7 +137,9 @@ class RiskEngine:
             )
 
         open_position_count = db.execute(
-            select(func.count(Position.id)).where(Position.status == PositionStatus.OPEN)
+            select(func.count(Position.id)).where(
+                Position.status == PositionStatus.OPEN, Position.portfolio_id == portfolio.id
+            )
         ).scalar_one()
         if open_position_count >= self.settings.risk_max_simultaneous_positions:
             return rejected(
